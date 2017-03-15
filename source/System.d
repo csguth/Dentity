@@ -1,44 +1,39 @@
-module System;
+module system;
 
-import std.stdio;
 import std.algorithm;
+import std.stdio;
 
+/// An Entity
 struct Entity
 {
+public:
+    /// Entity id.
+    /// Returns: the id of an entity.
+    @property size_t id() const {
+        return m_id;
+    }
+    ///
+    unittest
+    {
+        const Entity en = Entity(42);
+        assert(en.id == 42);
+    }
+
 private:
-    this(ulong id)
+    this(size_t id)
     {
         this.m_id = id;
     }
-public:
-    @property ulong id() { return m_id; }
-    unittest
-    {
-        Entity en = Entity(42);
-        assert(en.id == 42);
-    }
-    @property bool valid() { return m_valid; }
-    unittest
-    {
-        Entity en = Entity(42);
-        assert(en.valid);
-    }
-private:
-    void die() { m_valid = false; }
-    unittest
-    {
-        Entity en = Entity(42);
-        en.die();
-        assert(!en.valid);
-    }
-    ulong m_id;
-    bool m_valid = true;
+
+    size_t m_id;
 }
 
 /// System class. Responsible for creating and destroying Entities.
 class System
 {
 public:
+    /// Add Entity
+    /// Returns: The created entity.
     Entity add()
     {
         Entity en = Entity(m_indices.length);
@@ -46,7 +41,10 @@ public:
         m_entities ~= en;
         return en;
     }
-    bool valid(Entity en)
+    /// Alive Entity.
+    /// Params: An Entity.
+    /// Returns: True if the Entity is alive. False, otherwise.
+    bool alive(Entity en)
     {
         return lookup(en) != -1;
     }
@@ -55,12 +53,16 @@ public:
         System a = new System;
         auto en = a.add();
         assert(a.length == 1);
-        assert(a.valid(en));
+        assert(a.alive(en));
     }
-    ulong lookup(Entity en)
+    /// Entity Lookup.
+    /// Params: An Entity.
+    /// Returns: The index of the Entity in the Entity's array.
+    size_t lookup(Entity en)
     {
         return m_indices[en.id];
     }
+    ///
     unittest
     {
         System a = new System;
@@ -68,34 +70,34 @@ public:
         auto en2 = a.add();
         assert(a.lookup(en) == 0);
         assert(a.lookup(en2) == 1);
-        a.erase(en);
-        assert(a.lookup(en) == -1);
-        assert(a.lookup(en2) == 0);
     }
-    void erase(Entity en)
+    /// Kill Entity.
+    /// Params: An Entity.
+    void kill(Entity en)
     {
-        en.die();
-        m_indices[m_entities[m_entities.length-1].id()] = lookup(en);
+        m_indices[m_entities[$-1].id()] = lookup(en);
         m_entities = remove!(SwapStrategy.unstable)(m_entities, lookup(en));
         m_indices[en.id()] = -1;
     }
+    /// System.alive usage after killing an Entity.
     unittest
     {
         System a = new System;
         auto en = a.add();
-        a.erase(en);
-        assert(!a.valid(en));
-        assert(a.empty());
+        a.kill(en);
+        assert(!a.alive(en));
+    }
+    /// System.lookup usage after killing an Entity.
+    unittest
+    {
+        System a = new System;
+        auto en1 = a.add();
         auto en2 = a.add();
-        auto en3 = a.add();
-        assert(a.length == 2);
-        a.erase(en2);
-        assert(a.length == 1);
-        assert(!a.valid(en));
-        assert(!a.valid(en2));
-        assert(a.valid(en3));
+        a.kill(en1);
+        assert(a.lookup(en2) == 0);
     }
     /// Empty
+    /// Returns: True if there are no live Entities.
     bool empty()
     {
         return this.length == 0;
@@ -103,18 +105,20 @@ public:
     ///
     unittest
     {
-        System a = new System;
+        System  a = new System;
         assert(a.empty());
         auto en = a.add();
         assert(!a.empty());
-        a.erase(en);
+        a.kill(en);
         assert(a.empty());
     }
-
-    /// length
-    @property ulong length() { return m_entities.length; }
+    /// Length
+    /// Returns: The number of live Entities.
+    @property size_t length() {
+        return m_entities.length;
+    }
 
 private:
     Entity[] m_entities;
-    ulong[] m_indices;
+    size_t[] m_indices;
 }
