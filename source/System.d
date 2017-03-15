@@ -3,7 +3,7 @@ module System;
 import std.stdio;
 import std.algorithm;
 
-class Entity
+struct Entity
 {
 private:
     this(ulong id)
@@ -14,20 +14,20 @@ public:
     @property ulong id() { return m_id; }
     unittest
     {
-        auto en = new Entity(42);
+        Entity en = Entity(42);
         assert(en.id == 42);
     }
     @property bool valid() { return m_valid; }
     unittest
     {
-        auto en = new Entity(42);
+        Entity en = Entity(42);
         assert(en.valid);
     }
 private:
     void die() { m_valid = false; }
     unittest
     {
-        auto en = new Entity(42);
+        Entity en = Entity(42);
         en.die();
         assert(!en.valid);
     }
@@ -41,14 +41,14 @@ class System
 public:
     Entity add()
     {
-        auto entity = new Entity(m_indices.length);
+        Entity en = Entity(m_indices.length);
         m_indices ~= m_entities.length;
-        m_entities ~= entity;
-        return entity;
+        m_entities ~= en;
+        return en;
     }
     bool valid(Entity en)
     {
-        return en.valid;
+        return lookup(en) != -1;
     }
     unittest
     {
@@ -68,11 +68,16 @@ public:
         auto en2 = a.add();
         assert(a.lookup(en) == 0);
         assert(a.lookup(en2) == 1);
+        a.erase(en);
+        assert(a.lookup(en) == -1);
+        assert(a.lookup(en2) == 0);
     }
     void erase(Entity en)
     {
         en.die();
+        m_indices[m_entities[m_entities.length-1].id()] = lookup(en);
         m_entities = remove!(SwapStrategy.unstable)(m_entities, lookup(en));
+        m_indices[en.id()] = -1;
     }
     unittest
     {
