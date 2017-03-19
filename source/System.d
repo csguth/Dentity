@@ -1,7 +1,8 @@
 module system;
 
-import std.algorithm;
-import std.stdio;
+import std.algorithm: remove, SwapStrategy;
+import std.conv: to;
+import std.signals;
 
 /// An Entity
 struct Entity
@@ -32,36 +33,44 @@ private:
 class System
 {
 public:
+    this()
+    {
+    }
     /// Add Entity
     /// Returns: The created entity.
     Entity add()
     {
-        Entity en = Entity(m_indices.length);
-        m_indices ~= m_entities.length;
+        auto en     = Entity(m_indices.length);
+        m_indices  ~= m_entities.length;
         m_entities ~= en;
-        foreach(obs; m_observers)
-        {
-            obs.onAdd(en);
-        }
+        added.emit(en);
         return en;
     }
-    /// Alive Entity.
-    /// Params: An Entity.
-    /// Returns: True if the Entity is alive. False, otherwise.
+    /******************************
+    * Alive Entity.
+    * Params:
+    *           en = A handler for an Entity.
+    * Returns: True if the Entity is alive. False, otherwise.
+    */
     bool alive(Entity en)
     {
         return lookup(en) != size_t.max;
     }
+    ///
     unittest
     {
-        System a = new System;
-        auto en = a.add();
-        assert(a.length == 1);
-        assert(a.alive(en));
+        System sys = new System;
+        auto en = sys.add();
+        assert(sys.alive(en));
+        sys.kill(en);
+        assert(!sys.alive(en));
     }
-    /// Entity Lookup.
-    /// Params: An Entity.
-    /// Returns: The index of the Entity in the Entity's array.
+    /******************************
+    * Entity lookup.
+    * Params:
+    *           en = A handler for an Entity.
+    * Returns: The index of the Entity in the Entity's array.
+    */
     size_t lookup(Entity en) const
     {
         return m_indices[en.id];
@@ -69,52 +78,51 @@ public:
     ///
     unittest
     {
-        System a = new System;
-        auto en = a.add();
-        auto en2 = a.add();
-        assert(a.lookup(en) == 0);
-        assert(a.lookup(en2) == 1);
+        System sys = new System;
+        auto en = sys.add();
+        auto en2 = sys.add();
+        assert(sys.lookup(en) == 0);
+        assert(sys.lookup(en2) == 1);
     }
-    /// Kill Entity.
-    /// Params: An Entity.
+    /******************************
+    * Kill Entity.
+    * Params:
+    *           en = A handler for an Entity.
+    */
     void kill(Entity en)
     {
-        foreach(obs; m_observers)
-        {
-            obs.onKill(en);
-        }
-        auto lastEntityId = m_entities[$-1].id();
-        auto currIndex = lookup(en);
-        if(m_entities.length == 1)
-        {
-            m_entities = m_entities[0..$-1]; // Workaround for [Issue 11576] New: std.algorithm.remove!(SwapStrategy.unstable) overruns array bounds
-        }
-        else
-        {
-            m_entities.remove!(SwapStrategy.unstable)(currIndex);
-        }
+        killed.emit(en);
+        auto lastEntityId        = m_entities[$-1].id();
+        auto currIndex           = lookup(en);
+        m_entities.remove!(SwapStrategy.unstable)(currIndex);
+        --m_entities.length;
         m_indices[lastEntityId]  = currIndex;
         m_indices[en.id()]       = size_t.max;
     }
     /// System.alive usage after killing an Entity.
     unittest
     {
-        System a = new System;
-        auto en = a.add();
-        a.kill(en);
-        assert(!a.alive(en));
+        System sys = new System;
+        auto en = sys.add();
+        sys.kill(en);
+        assert(!sys.alive(en));
     }
     /// System.lookup usage after killing an Entity.
     unittest
     {
-        System a = new System;
-        auto en1 = a.add();
-        auto en2 = a.add();
-        a.kill(en1);
-        assert(a.lookup(en2) == 0);
+        System sys = new System;
+        auto en1 = sys.add();
+        auto en2 = sys.add();
+        sys.kill(en1);
+        assert(sys.lookup(en1) == size_t.max);
+        assert(sys.lookup(en2) == 0);
+        assert(sys.length == 1);
     }
-    /// Empty
-    /// Returns: True if there are no live Entities.
+    /******************************
+    * Empty System.
+    * Returns:
+    *           True if there are no live Entities.
+    */
     bool empty() const
     {
         return length == 0;
@@ -122,23 +130,47 @@ public:
     ///
     unittest
     {
-        System  a = new System;
-        assert(a.empty());
-        auto en = a.add();
-        assert(!a.empty());
-        a.kill(en);
-        assert(a.empty());
+        System sys = new System;
+        assert(sys.empty());
+        auto en = sys.add();
+        auto en2 = sys.add();
+        auto en3 = sys.add();
+        assert(!sys.empty());
+        sys.kill(en);
+        sys.kill(en2);
+        sys.kill(en3);
+        assert(sys.empty());
     }
-    /// Length
-    /// Returns: The number of live Entities.
+    /******************************
+    * Length
+    * Returns:
+    *           The number of live Entities.
+    */
     @property size_t length() const {
         return m_entities.length;
     }
 
+    /******************************
+    * Attach an Observer
+    * Params:
+    *           obs = The observer.
+    */
     void attachObserver(Observer obs)
     {
-        m_observers ~= obs;
+        added.connect(&obs.onAdd);
+        killed.connect(&obs.onKill);
     }
+    /******************************
+    * Dettach an Observer
+    * Params:
+    *           obs = The observer.
+    */
+    void detachObserver(Observer obs)
+    {
+        added.disconnect(&obs.onAdd);
+        killed.disconnect(&obs.onKill);
+    }
+    ///
     unittest
     {
         class Dummy: Observer {
@@ -148,15 +180,19 @@ public:
         }
         Dummy obs = new Dummy;
         System sys = new System;
-        assert(sys.m_observers.length == 0);
         sys.attachObserver(obs);
-        assert(sys.m_observers.length == 1);
+        sys.detachObserver(obs);
+    }
+    override string toString()
+    {
+        return m_indices.to!string();
     }
 
 private:
-    Entity[] m_entities;
     size_t[] m_indices;
-    Observer[] m_observers;
+    Entity[] m_entities;
+    mixin Signal!(Entity) added;
+    mixin Signal!(Entity) killed;
 }
 
 interface Observer
@@ -170,7 +206,7 @@ interface Observer
             int added = 0;
             void onKill(Entity enitity) { }
         }
-        Dummy obs = new Dummy;
+        Dummy obs  = new Dummy;
         System sys = new System;
         sys.attachObserver(obs);
         sys.add(); sys.add(); sys.add(); sys.add();
@@ -185,7 +221,7 @@ interface Observer
             void onKill(Entity enitity) { overall--; }
             int overall = 0;
         }
-        Dummy obs = new Dummy;
+        Dummy obs  = new Dummy;
         System sys = new System;
         sys.attachObserver(obs);
         auto en0 = sys.add(); auto en1 = sys.add(); auto en2 = sys.add(); auto en3 = sys.add();
@@ -201,51 +237,100 @@ interface Observer
     }
 }
 
-class DoubleProperty: Observer
+/******************************
+* Property
+* Params:
+*           T = The value type of the property.
+*/
+class Property(T): Observer
 {
 public:
+    /******************************
+    * Property Constructor
+    * Params:
+    *           sys = The Entity system this property should be attached to.
+    */
     this(System sys)
     {
         sys.attachObserver(this);
-        m_sys = sys;
+        m_sys           = sys;
+        m_values.length = sys.length;
     }
+    ~this()
+    {
+        m_sys.detachObserver(this);
+    }
+protected:
     void onAdd(Entity en)
     {
-        m_values ~= 0.0;
+        m_values ~= T();
     }
     void onKill(Entity en)
     {
         m_values.remove!(SwapStrategy.unstable)(m_sys.lookup(en));
+        --m_values.length;
     }
-    double get(Entity en) const
+public:
+    /******************************
+    * Property Getter
+    * Params:
+    *           en = A handler for an Entity.
+    * Returns:
+    *             T = The property.
+    */
+    T get(Entity en) const
     {
         return m_values[m_sys.lookup(en)];
     }
+    ///
     unittest
     {
-        System sys = new System;
-        DoubleProperty prop = new DoubleProperty(sys);
-        auto en = sys.add(); auto en2 = sys.add();
+        System sys             = new System;
+        Property!(double) prop = new Property!(double)(sys);
+        auto en                = sys.add();
+        auto en2               = sys.add();
         prop.set(en, 1.2);
         prop.set(en2, 2.3);
         sys.kill(en);
         assert(prop.get(en2) == 2.3);
     }
-    void set(Entity en, double value)
+    /******************************
+    * Updates the property value for a given entity.
+    * Params:
+    *           en = A handler for an Entity.
+    *        value = The value the property will be set to.
+    * Returns:
+    *             T = The property.
+    */
+    void set(Entity en, T value)
     {
         m_values[m_sys.lookup(en)] = value;
     }
+    ///
     unittest
     {
         System sys = new System;
-        DoubleProperty prop = new DoubleProperty(sys);
-        auto en = sys.add();
+        Property!(double) prop = new Property!(double)(sys);
+        auto en                = sys.add();
         prop.set(en, 42.0);
         assert(prop.get(en) == 42.0);
     }
+    ///
+    unittest
+    {
+        System sys          = new System;
+        auto en             = sys.add();
+        Property!(int) prop = new Property!(int)(sys);
+        prop.set(en, 42);
+        assert(prop.get(en) == 42);
+    }
+    override string toString()
+    {
+        return m_values.to!string();
+    }
 
 private:
-    const System m_sys;
-    double[] m_values;
+    System m_sys;
+       T[] m_values;
 
 }
