@@ -3,6 +3,7 @@ module system;
 import std.algorithm: remove, SwapStrategy;
 import std.conv: to;
 import std.signals;
+import std.typecons: scoped;
 
 /// An Entity
 struct Entity
@@ -278,21 +279,9 @@ public:
     * Returns:
     *             T = The property.
     */
-    T get(Entity en) const
+    T opIndex(Entity en) const
     {
         return m_values[m_sys.lookup(en)];
-    }
-    ///
-    unittest
-    {
-        System sys             = new System;
-        Property!(double) prop = new Property!(double)(sys);
-        auto en                = sys.add();
-        auto en2               = sys.add();
-        prop.set(en, 1.2);
-        prop.set(en2, 2.3);
-        sys.kill(en);
-        assert(prop.get(en2) == 2.3);
     }
     /******************************
     * Updates the property value for a given entity.
@@ -302,27 +291,10 @@ public:
     * Returns:
     *             T = The property.
     */
-    void set(Entity en, T value)
+    T opIndexAssign(T value, Entity en)
     {
         m_values[m_sys.lookup(en)] = value;
-    }
-    ///
-    unittest
-    {
-        System sys = new System;
-        Property!(double) prop = new Property!(double)(sys);
-        auto en                = sys.add();
-        prop.set(en, 42.0);
-        assert(prop.get(en) == 42.0);
-    }
-    ///
-    unittest
-    {
-        System sys          = new System;
-        auto en             = sys.add();
-        Property!(int) prop = new Property!(int)(sys);
-        prop.set(en, 42);
-        assert(prop.get(en) == 42);
+        return value;
     }
     override string toString()
     {
@@ -333,4 +305,35 @@ private:
     System m_sys;
        T[] m_values;
 
+}
+///
+unittest
+{
+    System sys = new System;
+    auto prop  = scoped!(Property!double)(sys);
+    auto en    = sys.add();
+    auto en2   = sys.add();
+    prop[en]   = 1.2;
+    prop[en2]  = 2.3;
+    sys.kill(en);
+    assert(prop[en2] == 2.3);
+}
+///
+unittest
+{
+    System sys = new System;
+    auto prop  = scoped!(Property!double)(sys);
+    auto en    = sys.add();
+    prop[en]   = 42.0;
+    assert(prop[en] == 42.0);
+}
+
+///
+unittest
+{
+    System sys = new System;
+    auto en    = sys.add();
+    auto prop  = scoped!(Property!int)(sys);
+    prop[en]   = 42;
+    assert(prop[en] == 42);
 }
