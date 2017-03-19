@@ -1,5 +1,6 @@
-import std.stdio, std.typecons: scoped;
-import system: Entity, System, Property;
+import std.stdio;
+import system: Entity, System, Property, makeProperty;
+import std.typecons: scoped;
 
 void main()
 {
@@ -7,7 +8,8 @@ void main()
     const Entity en = system.add();
     const Entity en2 = system.add();
     const Entity en3 = system.add();
-    auto prop = scoped!(Property!int)(system);
+    auto prop = makeProperty!int(system);
+    
     prop[en]  = 1;
     prop[en2] = 2;
     prop[en3] = 3;
@@ -15,18 +17,16 @@ void main()
     writeln(system);
     writeln(cast(Property!int)(prop));
 
-    auto prop2 = scoped!(Property!double)(system);
+    auto prop2 = makeProperty!double(system);
     prop2[en] = 4.2;
 
     writeln(system);
-    writeln(cast(Property!int)(prop));
-    writeln(cast(Property!double)(prop2));
+    writeln(prop.toString());
+    writeln(prop2.toString());
 
     system.kill(en2);
 
     writeln(system);
-    writeln(cast(Property!int)(prop));
-    writeln(cast(Property!double)(prop2));
-
-    
+    writeln(prop.toString());
+    writeln(prop2.toString());
 }

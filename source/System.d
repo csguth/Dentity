@@ -3,6 +3,7 @@ module system;
 import std.algorithm: remove, SwapStrategy;
 import std.conv: to;
 import std.signals;
+import std.string: format;
 import std.typecons: scoped;
 
 /// An Entity
@@ -28,6 +29,20 @@ private:
     }
 
     size_t m_id;
+}
+
+
+template isObserver(T)
+{
+    const isObserver =
+        __traits(compiles,
+            (T t)
+            {
+                System sys = new System;
+                auto en = sys.add();
+                t.onAdd(en);
+                t.onKill(en);
+            });
 }
 
 /// System class. Responsible for creating and destroying Entities.
@@ -150,39 +165,42 @@ public:
     @property size_t length() const {
         return m_entities.length;
     }
-
-    /******************************
-    * Attach an Observer
-    * Params:
-    *           obs = The observer.
-    */
-    void attachObserver(Observer obs)
-    {
-        added.connect(&obs.onAdd);
-        killed.connect(&obs.onKill);
-    }
-    /******************************
-    * Dettach an Observer
-    * Params:
-    *           obs = The observer.
-    */
-    void detachObserver(Observer obs)
-    {
-        added.disconnect(&obs.onAdd);
-        killed.disconnect(&obs.onKill);
-    }
     ///
     unittest
     {
-        class Dummy: Observer {
+        class Dummy
+        {
         public:
-            void onAdd(Entity entity) { }
-            void onKill(Entity enitity) { }
+            this()
+            {
+
+            }
+            void attach(System sys) {
+                sys.added.connect(&this.onAdd);
+            }
+            void detach(System sys) {
+                sys.added.disconnect(&this.onAdd);
+            }
+            void onAdd(Entity) { }
+            void onKill(Entity) { }
         }
         Dummy obs = new Dummy;
         System sys = new System;
-        sys.attachObserver(obs);
-        sys.detachObserver(obs);
+        obs.attach(sys);
+        obs.detach(sys);
+
+        /*
+        Should not compile:
+
+        class Invalid
+        {
+        public:
+            void foo() {}
+        }
+        Invalid inv = new Invalid;
+        sys.attachObserver(inv);
+        sys.detachObserver(inv);
+        */
     }
     override string toString()
     {
@@ -196,54 +214,12 @@ private:
     mixin Signal!(Entity) killed;
 }
 
-interface Observer
-{
-    void onAdd(Entity entity);
-    unittest
-    {
-        class Dummy: Observer {
-        public:
-            void onAdd(Entity entity) { added++; }
-            int added = 0;
-            void onKill(Entity enitity) { }
-        }
-        Dummy obs  = new Dummy;
-        System sys = new System;
-        sys.attachObserver(obs);
-        sys.add(); sys.add(); sys.add(); sys.add();
-        assert(obs.added == 4);
-    }
-    void onKill(Entity entity);
-    unittest
-    {
-        class Dummy: Observer {
-        public:
-            void onAdd(Entity entity) { overall++; }
-            void onKill(Entity enitity) { overall--; }
-            int overall = 0;
-        }
-        Dummy obs  = new Dummy;
-        System sys = new System;
-        sys.attachObserver(obs);
-        auto en0 = sys.add(); auto en1 = sys.add(); auto en2 = sys.add(); auto en3 = sys.add();
-        assert(obs.overall == 4);
-        sys.kill(en0);
-        assert(obs.overall == 3);
-        sys.kill(en1);
-        assert(obs.overall == 2);
-        sys.kill(en2);
-        assert(obs.overall == 1);
-        sys.kill(en3);
-        assert(obs.overall == 0);
-    }
-}
-
 /******************************
 * Property
 * Params:
 *           T = The value type of the property.
 */
-class Property(T): Observer
+class Property(T)
 {
 public:
     /******************************
@@ -253,13 +229,15 @@ public:
     */
     this(System sys)
     {
-        sys.attachObserver(this);
-        m_sys           = sys;
         m_values.length = sys.length;
+        m_sys           = sys;
+        m_sys.added.connect(&this.onAdd);
+        m_sys.killed.connect(&this.onKill);
     }
     ~this()
     {
-        m_sys.detachObserver(this);
+        m_sys.killed.disconnect(&this.onKill);
+        m_sys.added.disconnect(&this.onAdd);
     }
 protected:
     void onAdd(Entity en)
@@ -296,9 +274,10 @@ public:
         m_values[m_sys.lookup(en)] = value;
         return value;
     }
-    override string toString()
+
+    override string toString() const
     {
-        return m_values.to!string();
+        return format("%s", m_values);
     }
 
 private:
@@ -336,4 +315,12 @@ unittest
     auto prop  = scoped!(Property!int)(sys);
     prop[en]   = 42;
     assert(prop[en] == 42);
+}
+
+alias makeProperty(T) = scoped!(Property!T);
+unittest
+{
+    System sys = new System;
+    auto prop = makeProperty!double(sys);
+    prop[sys.add()] = 4.2;
 }
